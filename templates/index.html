@@ -33,29 +33,49 @@
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
+        /* Audio button styles */
         .audio-btn {
             position: relative;
             transition: all 0.3s ease;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            outline: none;
         }
         
         .audio-btn.playing {
             background-color: #dbeafe;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
         }
         
-        .audio-btn.playing svg {
-            animation: pulse 2s infinite;
+        .audio-btn .play-icon {
+            display: block;
         }
         
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
+        .audio-btn .pause-icon,
+        .audio-btn .loading-icon {
+            display: none;
         }
         
-        .audio-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .audio-btn.playing .play-icon {
+            display: none;
+        }
+        
+        .audio-btn.playing .pause-icon {
+            display: block;
+        }
+        
+        .audio-btn.loading .play-icon,
+        .audio-btn.loading .pause-icon {
+            display: none;
+        }
+        
+        .audio-btn.loading .loading-icon {
+            display: block;
+            animation: spin 1s linear infinite;
         }
     </style>
 </head>
@@ -143,8 +163,22 @@
                         <button onclick="playAudio('summary', this)" 
                                 class="audio-btn p-2 rounded-full bg-blue-100 hover:bg-blue-200 transition-colors"
                                 data-playing="false">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M17.95 4.95a9 9 0 010 14.1M11 5L6 9H2v6h4l5 4V5z" />
+                            <!-- Play icon -->
+                            <svg class="play-icon h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M15.536 8.464a5 5 0 010 7.072M17.95 4.95a9 9 0 010 14.1M11 5L6 9H2v6h4l5 4V5z" />
+                            </svg>
+                            <!-- Pause icon -->
+                            <svg class="pause-icon h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <!-- Loading icon -->
+                            <svg class="loading-icon h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" 
+                                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                </path>
                             </svg>
                         </button>
                     </div>
@@ -215,93 +249,72 @@
                     .join('. ');
             }
 
-            // Split text into smaller chunks for faster processing
-            const chunks = text.match(/[^。.!?]+[。.!?]+/g) || [text];
-            const maxChunkLength = 200;
-            const processedChunks = [];
-            let currentChunk = '';
-
-            chunks.forEach(chunk => {
-                if ((currentChunk + chunk).length > maxChunkLength) {
-                    if (currentChunk) processedChunks.push(currentChunk.trim());
-                    currentChunk = chunk;
-                } else {
-                    currentChunk += ' ' + chunk;
-                }
-            });
-            if (currentChunk) processedChunks.push(currentChunk.trim());
-
-            // Update button state
+            // Update button state to loading
             button.dataset.playing = 'true';
-            button.classList.add('playing');
-            currentButton = button;
+            button.classList.add('loading');
 
-            // Show loading state
-            const originalContent = button.innerHTML;
-            button.innerHTML = `<div class="animate-pulse">●</div>`;
+            const language = document.getElementById('language').value;
 
-            // Play chunks sequentially
-            let chunkIndex = 0;
-            playNextChunk();
-
-            function playNextChunk() {
-                if (chunkIndex >= processedChunks.length) {
-                    stopAudio();
-                    button.innerHTML = originalContent;
-                    return;
-                }
-
-                const language = document.getElementById('language').value;
-                
-                fetch('/text-to-speech', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: processedChunks[chunkIndex],
-                        language: language
-                    })
+            // Play audio with improved error handling
+            fetch('/text-to-speech', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: text,
+                    language: language
                 })
-                .then(response => response.blob())
-                .then(blob => {
-                    if (!currentButton || currentButton !== button) return;
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.blob();
+            })
+            .then(blob => {
+                // Remove loading state
+                button.classList.remove('loading');
+                button.classList.add('playing');
 
-                    const url = URL.createObjectURL(blob);
-                    currentAudio = new Audio(url);
-                    currentAudio.volume = 1.0;
+                const url = URL.createObjectURL(blob);
+                currentAudio = new Audio(url);
+                currentAudio.volume = 1.0;
+                currentButton = button;
 
-                    currentAudio.addEventListener('ended', () => {
-                        URL.revokeObjectURL(url);
-                        chunkIndex++;
-                        playNextChunk();
-                    });
-
-                    currentAudio.addEventListener('error', (e) => {
-                        console.error('Audio playback error:', e);
-                        alert('Failed to play audio. Please try again.');
-                        stopAudio();
-                        button.innerHTML = originalContent;
-                    });
-
-                    return currentAudio.play();
-                })
-                .catch(error => {
-                    console.error('Error:', error);
+                // Clean up when audio ends
+                currentAudio.addEventListener('ended', () => {
+                    URL.revokeObjectURL(url);
                     stopAudio();
-                    button.innerHTML = originalContent;
                 });
-            }
+
+                // Handle audio errors
+                currentAudio.addEventListener('error', (e) => {
+                    console.error('Audio playback error:', e);
+                    stopAudio();
+                    alert('Failed to play audio. Please try again.');
+                });
+
+                return currentAudio.play();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                stopAudio();
+                alert('Failed to generate audio. Please try again.');
+            });
         }
 
         function stopAudio() {
             if (currentAudio) {
                 currentAudio.pause();
+                currentAudio.currentTime = 0;
                 currentAudio = null;
             }
             if (currentButton) {
-                currentButton.classList.remove('playing');
+                currentButton.classList.remove('playing', 'loading');
                 currentButton.dataset.playing = 'false';
                 currentButton = null;
             }
+            // Enable all audio buttons
+            document.querySelectorAll('.audio-btn').forEach(btn => {
+                btn.disabled = false;
+            });
         }
 
         // Clean up when leaving the page

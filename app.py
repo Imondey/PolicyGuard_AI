@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, session, Response, send_file
+from flask import Flask, render_template, request, session, Response, send_file, make_response
 from modules.scraper import find_policy_links, get_text_from_url
 from modules.analyzer import analyze_policy_text
 from modules.pdf_generator import create_report
@@ -6,10 +6,21 @@ from gtts import gTTS, gTTSError
 from io import BytesIO
 import tempfile
 import os
+import urllib.request
 
 app = Flask(__name__)
 # Secret key is needed to use sessions
 app.config['SECRET_KEY'] = 'a_very_secret_key_for_development' 
+
+def setup_fonts():
+    fonts_dir = os.path.join(os.path.dirname(__file__), 'fonts')
+    os.makedirs(fonts_dir, exist_ok=True)
+    
+    font_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSansCondensed.ttf"
+    font_path = os.path.join(fonts_dir, "DejaVuSansCondensed.ttf")
+    
+    if not os.path.exists(font_path):
+        urllib.request.urlretrieve(font_url, font_path)
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -65,19 +76,31 @@ def index():
 
 @app.route('/download_pdf')
 def download_pdf():
-    # Retrieve data from session
-    analysis_data = session.get('analysis')
-    url = session.get('url', 'N/A')
-    language = session.get('language', 'English')
-
-    if not analysis_data:
-        return "No analysis data found to generate PDF.", 404
+    try:
+        # Get data from session
+        url = session.get('url')
+        language = session.get('language')
+        analysis = session.get('analysis')
         
-    pdf_bytes = create_report(analysis_data, url, language)
-    
-    return Response(pdf_bytes,
-                    mimetype='application/pdf',
-                    headers={'Content-Disposition': 'attachment;filename=PolicyGuard_Report.pdf'})
+        if not all([url, language, analysis]):
+            return "No analysis data available. Please analyze a policy first.", 400
+            
+        # Generate PDF
+        pdf_bytes = create_report(analysis, url, language)
+        
+        if not pdf_bytes:
+            return "Failed to generate PDF report.", 500
+            
+        # Create response
+        response = make_response(pdf_bytes)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = 'attachment; filename=policy_analysis.pdf'
+        
+        return response
+        
+    except Exception as e:
+        print(f"Error in download_pdf: {str(e)}")
+        return "An error occurred while generating the PDF.", 500
 
 @app.route('/text-to-speech', methods=['POST'])
 def text_to_speech():
@@ -134,4 +157,5 @@ def text_to_speech():
         return {'error': str(e)}, 500
 
 if __name__ == '__main__':
+    setup_fonts()  # Set up fonts before running the app
     app.run(debug=True)
