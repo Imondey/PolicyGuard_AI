@@ -3,7 +3,6 @@ import os
 
 class PDF(FPDF):
     def header(self):
-        # Logo
         self.set_font('Arial', 'B', 20)
         self.cell(0, 10, 'PolicyGuard AI Report', 0, 1, 'C')
         self.ln(10)
@@ -13,35 +12,47 @@ def create_report(analysis_data, url, language):
         pdf = PDF()
         pdf.add_page()
         
-        # Set Unicode font
-        pdf.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
-        pdf.set_font('DejaVu', '', 12)
+        # Try different fonts in order of preference
+        fonts = ['Arial', 'Helvetica', 'Courier']
+        font_set = False
+        
+        for font in fonts:
+            try:
+                pdf.set_font(font, '', 12)
+                font_set = True
+                break
+            except Exception:
+                continue
+        
+        if not font_set:
+            # If no preferred fonts work, use the default font
+            pdf.set_font('Arial', '', 12)
         
         # URL Section
-        pdf.set_font('DejaVu', 'B', 14)
+        pdf.set_font(pdf.font_family, 'B', 14)
         pdf.cell(0, 10, 'Website Analyzed:', 0, 1)
-        pdf.set_font('DejaVu', '', 12)
+        pdf.set_font(pdf.font_family, '', 12)
         pdf.multi_cell(0, 10, url)
         pdf.ln(10)
         
         # Risk Level Section
-        pdf.set_font('DejaVu', 'B', 14)
+        pdf.set_font(pdf.font_family, 'B', 14)
         pdf.cell(0, 10, 'Risk Level:', 0, 1)
-        pdf.set_font('DejaVu', '', 12)
+        pdf.set_font(pdf.font_family, '', 12)
         pdf.cell(0, 10, analysis_data.get('risk_category', 'N/A'), 0, 1)
         pdf.ln(10)
         
         # Summary Section
-        pdf.set_font('DejaVu', 'B', 14)
+        pdf.set_font(pdf.font_family, 'B', 14)
         pdf.cell(0, 10, f'Summary ({language}):', 0, 1)
-        pdf.set_font('DejaVu', '', 12)
+        pdf.set_font(pdf.font_family, '', 12)
         pdf.multi_cell(0, 10, analysis_data.get('translated_summary', 'No summary available.'))
         pdf.ln(10)
         
         # Key Risks Section
-        pdf.set_font('DejaVu', 'B', 14)
+        pdf.set_font(pdf.font_family, 'B', 14)
         pdf.cell(0, 10, f'Key Risks ({language}):', 0, 1)
-        pdf.set_font('DejaVu', '', 12)
+        pdf.set_font(pdf.font_family, '', 12)
         risks = analysis_data.get('translated_key_risks', [])
         for risk in risks:
             pdf.multi_cell(0, 10, f"• {risk}")

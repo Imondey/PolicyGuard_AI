@@ -4,23 +4,35 @@ from modules.analyzer import analyze_policy_text
 from modules.pdf_generator import create_report
 from gtts import gTTS, gTTSError
 from io import BytesIO
-import tempfile
 import os
-import urllib.request
 
 app = Flask(__name__)
-# Secret key is needed to use sessions
-app.config['SECRET_KEY'] = 'a_very_secret_key_for_development' 
+app.config['SECRET_KEY'] = 'a_very_secret_key_for_development'
 
 def setup_fonts():
+    """Set up the fonts directory with a default system font"""
     fonts_dir = os.path.join(os.path.dirname(__file__), 'fonts')
     os.makedirs(fonts_dir, exist_ok=True)
     
-    font_url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSansCondensed.ttf"
-    font_path = os.path.join(fonts_dir, "DejaVuSansCondensed.ttf")
+    # Use Arial or a system font instead of downloading DejaVu
+    font_path = os.path.join(fonts_dir, "arial.ttf")
     
+    # If font doesn't exist, create a symlink to system Arial font
     if not os.path.exists(font_path):
-        urllib.request.urlretrieve(font_url, font_path)
+        try:
+            # Windows path to Arial
+            system_font = "C:\\Windows\\Fonts\\arial.ttf"
+            if os.path.exists(system_font):
+                if os.name == 'nt':  # Windows
+                    import shutil
+                    shutil.copy2(system_font, font_path)
+                else:  # Unix-like
+                    os.symlink(system_font, font_path)
+            else:
+                print("Warning: Arial font not found. Text rendering might be affected.")
+        except Exception as e:
+            print(f"Warning: Could not set up font: {e}")
+            print("Continuing without custom font...")
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
