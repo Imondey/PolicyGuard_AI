@@ -18,16 +18,21 @@ def create_report(analysis_data, url, language):
     pdf = PDF()
     pdf.add_page()
     
-    # Add DejaVu font for UTF-8 support (for multiple languages)
-    # You might need to provide the path to the font file on your system
-    # Or place the .ttf file in your project directory.
-    # We will try to add it, but fallback to Arial if it fails.
     try:
-        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-        pdf.set_font('DejaVu', '', 12)
+        # Try loading Arial Unicode MS for better language support
+        pdf.add_font('Arial Unicode MS', '', 'ARIALUNI.TTF', uni=True)
+        default_font = 'Arial Unicode MS'
     except RuntimeError:
-        print("DejaVuSans.ttf not found. Falling back to Arial. Non-ASCII characters may not render correctly.")
-        pdf.set_font('Arial', '', 12)
+        try:
+            # Fallback to DejaVu
+            pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
+            default_font = 'DejaVu'
+        except RuntimeError:
+            # Last resort - basic Arial
+            default_font = 'Arial'
+            print("Warning: Using Arial font. Some characters may not render correctly.")
+    
+    pdf.set_font(default_font, '', 12)
 
     # Report Title
     pdf.set_font_size(16)

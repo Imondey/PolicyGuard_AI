@@ -44,12 +44,12 @@ def find_policy_links(base_url):
         print(f"Error finding policy links for {base_url}: {e}")
         return []
 
-def get_text_from_url(url):
+def get_text_from_url(url, timeout=10):
     """
     Extracts all readable text content from a given URL.
     """
     try:
-        response = requests.get(url, timeout=10, verify=False)
+        response = requests.get(url, timeout=timeout, verify=False)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
         
@@ -69,6 +69,9 @@ def get_text_from_url(url):
         text = '\n'.join(chunk for chunk in chunks if chunk)
         
         return text
+    except requests.Timeout:
+        print(f"Request timed out for {url}")
+        return None
     except requests.RequestException as e:
         print(f"Error fetching text from {url}: {e}")
         return None

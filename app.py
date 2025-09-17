@@ -2,8 +2,10 @@ from flask import Flask, render_template, request, session, Response, send_file
 from modules.scraper import find_policy_links, get_text_from_url
 from modules.analyzer import analyze_policy_text
 from modules.pdf_generator import create_report
-from gtts import gTTS
+from gtts import gTTS, gTTSError
 from io import BytesIO
+import tempfile
+import os
 
 app = Flask(__name__)
 # Secret key is needed to use sessions
@@ -98,27 +100,35 @@ def text_to_speech():
     lang_code = language_map.get(language, 'en')
     
     try:
-        # Create audio file with optimized settings
+        # Create audio directly in memory for faster processing
         audio_io = BytesIO()
-        tts = gTTS(text=text, lang=lang_code, slow=False)
+        tts = gTTS(
+            text=text,
+            lang=lang_code,
+            slow=False,
+            lang_check=False
+        )
         tts.write_to_fp(audio_io)
         audio_io.seek(0)
         
         response = send_file(
             audio_io,
-            mimetype='audio/mp3',
+            mimetype='audio/mpeg',
             as_attachment=True,
             download_name='speech.mp3'
         )
         
-        # Add headers to prevent caching
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
+        # Add streaming headers
+        response.headers.update({
+            'Cache-Control': 'no-cache',
+            'Accept-Ranges': 'bytes',
+            'Content-Transfer-Encoding': 'binary'
+        })
         
         return response
-        
+            
     except Exception as e:
+        print(f"TTS Error: {str(e)}")
         return {'error': str(e)}, 500
 
 if __name__ == '__main__':

@@ -194,6 +194,7 @@
         let currentAudio = null;
         let currentButton = null;
 
+        // Update the playAudio function
         function playAudio(type, button) {
             // If the same button is clicked while playing, stop the audio
             if (button.dataset.playing === 'true') {
@@ -204,7 +205,7 @@
             // Stop any currently playing audio
             stopAudio();
 
-            // Get the correct text based on type
+            // Get and process text
             let text;
             if (type === 'summary') {
                 text = document.querySelector('.summary-text').textContent;
@@ -214,52 +215,81 @@
                     .join('. ');
             }
 
-            const language = document.getElementById('language').value;
+            // Split text into smaller chunks for faster processing
+            const chunks = text.match(/[^。.!?]+[。.!?]+/g) || [text];
+            const maxChunkLength = 200;
+            const processedChunks = [];
+            let currentChunk = '';
 
-            // Disable all audio buttons
-            document.querySelectorAll('.audio-btn').forEach(btn => {
-                btn.disabled = true;
+            chunks.forEach(chunk => {
+                if ((currentChunk + chunk).length > maxChunkLength) {
+                    if (currentChunk) processedChunks.push(currentChunk.trim());
+                    currentChunk = chunk;
+                } else {
+                    currentChunk += ' ' + chunk;
+                }
             });
+            if (currentChunk) processedChunks.push(currentChunk.trim());
 
-            // Show loading state
-            button.classList.add('playing');
+            // Update button state
             button.dataset.playing = 'true';
+            button.classList.add('playing');
             currentButton = button;
 
-            // Make the API call
-            fetch('/text-to-speech', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ text, language }),
-            })
-            .then(response => response.blob())
-            .then(blob => {
-                const url = URL.createObjectURL(blob);
-                currentAudio = new Audio(url);
-                currentAudio.volume = 1.0; // Maximum volume
-                
-                // Enable all buttons except the current one
-                document.querySelectorAll('.audio-btn').forEach(btn => {
-                    btn.disabled = btn === button;
-                });
+            // Show loading state
+            const originalContent = button.innerHTML;
+            button.innerHTML = `<div class="animate-pulse">●</div>`;
 
-                // Add event listeners for audio completion
-                currentAudio.addEventListener('ended', () => stopAudio());
-                currentAudio.addEventListener('error', () => stopAudio());
-                
-                // Play the audio immediately
-                const playPromise = currentAudio.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(() => stopAudio());
+            // Play chunks sequentially
+            let chunkIndex = 0;
+            playNextChunk();
+
+            function playNextChunk() {
+                if (chunkIndex >= processedChunks.length) {
+                    stopAudio();
+                    button.innerHTML = originalContent;
+                    return;
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Failed to play audio. Please try again.');
-                stopAudio();
-            });
+
+                const language = document.getElementById('language').value;
+                
+                fetch('/text-to-speech', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: processedChunks[chunkIndex],
+                        language: language
+                    })
+                })
+                .then(response => response.blob())
+                .then(blob => {
+                    if (!currentButton || currentButton !== button) return;
+
+                    const url = URL.createObjectURL(blob);
+                    currentAudio = new Audio(url);
+                    currentAudio.volume = 1.0;
+
+                    currentAudio.addEventListener('ended', () => {
+                        URL.revokeObjectURL(url);
+                        chunkIndex++;
+                        playNextChunk();
+                    });
+
+                    currentAudio.addEventListener('error', (e) => {
+                        console.error('Audio playback error:', e);
+                        alert('Failed to play audio. Please try again.');
+                        stopAudio();
+                        button.innerHTML = originalContent;
+                    });
+
+                    return currentAudio.play();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    stopAudio();
+                    button.innerHTML = originalContent;
+                });
+            }
         }
 
         function stopAudio() {
@@ -272,10 +302,6 @@
                 currentButton.dataset.playing = 'false';
                 currentButton = null;
             }
-            // Enable all audio buttons
-            document.querySelectorAll('.audio-btn').forEach(btn => {
-                btn.disabled = false;
-            });
         }
 
         // Clean up when leaving the page

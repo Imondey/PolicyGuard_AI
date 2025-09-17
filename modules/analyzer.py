@@ -9,6 +9,8 @@ load_dotenv() # Load environment variables from .env file
 try:
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
     model = genai.GenerativeModel('gemini-1.5-flash')
+    if not os.getenv("GEMINI_API_KEY"):
+        raise ValueError("GEMINI_API_KEY not found in environment variables")
 except Exception as e:
     print(f"Error configuring Gemini API: {e}")
     model = None
