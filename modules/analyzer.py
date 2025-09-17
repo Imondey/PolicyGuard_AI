@@ -3,25 +3,25 @@ import google.generativeai as genai
 import json
 from dotenv import load_dotenv
 
-load_dotenv() # Load environment variables from .env file
+load_dotenv()
 
-# Configure the Gemini API
-try:
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    if not os.getenv("GEMINI_API_KEY"):
-        raise ValueError("GEMINI_API_KEY not found in environment variables")
-except Exception as e:
-    print(f"Error configuring Gemini API: {e}")
-    model = None
+# Add multiple API keys
+API_KEYS = [
+    os.getenv("GEMINI_API_KEY_1"),
+    os.getenv("GEMINI_API_KEY_2"),
+    os.getenv("GEMINI_API_KEY_3"),
+]
+current_key_index = 0
+
+def get_next_api_key():
+    global current_key_index
+    current_key_index = (current_key_index + 1) % len(API_KEYS)
+    return API_KEYS[current_key_index]
 
 def analyze_policy_text(text, target_language="English"):
     """
     Uses the Gemini LLM to summarize, analyze risk, and translate policy text.
     """
-    if not model:
-        return {"error": "Gemini model not initialized. Check API key."}
-
     # Truncate text if too long to avoid quota issues
     max_length = 12000
     if len(text) > max_length:
@@ -63,6 +63,14 @@ def analyze_policy_text(text, target_language="English"):
     """
 
     try:
+        # Configure with next available API key
+        api_key = get_next_api_key()
+        if not api_key:
+            return {"error": "No valid API key found"}
+            
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+
         response = model.generate_content(
             prompt,
             generation_config={
@@ -82,8 +90,7 @@ def analyze_policy_text(text, target_language="English"):
         return json.loads(cleaned_response)
     except Exception as e:
         if "429" in str(e):  # Rate limit error
-            return {
-                "error": "API rate limit reached. Please try again in a few minutes or contact support to upgrade your API quota."
-            }
-        print(f"Error during API call or JSON parsing: {e}")
-        return {"error": f"Analysis failed. Please try again later."}
+            return {"error": "API rate limit reached. Please try again in a few minutes or contact support to upgrade your API quota."}
+        if "All API keys have reached their quota" in str(e):
+            return {"error": "All API keys have reached their quota. Please try again later."}
+        return {"error": f"Analysis failed: {str(e)}"}
