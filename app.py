@@ -62,15 +62,14 @@ def index():
             if 'error' in analysis_result:
                 return render_template('index.html', error=analysis_result['error'])
             
-            # Convert analysis_result to a format that can be stored in session
-            session_analysis = {
+            # Store ALL necessary data in session
+            session['url'] = url
+            session['language'] = language
+            session['analysis'] = {
                 'risk_category': analysis_result.get('risk_category', ''),
                 'translated_summary': analysis_result.get('translated_summary', ''),
                 'translated_key_risks': analysis_result.get('translated_key_risks', [])
             }
-            
-            # Store analysis in session
-            session['analysis'] = session_analysis
             
             result_data = {
                 "url": url,
@@ -89,18 +88,24 @@ def index():
 @app.route('/download_pdf')
 def download_pdf():
     try:
-        # Get data from session
+        # Get data from session with better error handling
         url = session.get('url')
         language = session.get('language')
         analysis = session.get('analysis')
         
-        if not all([url, language, analysis]):
+        if not url or not language or not analysis:
+            print("Missing session data:", {
+                'url': bool(url),
+                'language': bool(language),
+                'analysis': bool(analysis)
+            })
             return "No analysis data available. Please analyze a policy first.", 400
             
         # Generate PDF
         pdf_bytes = create_report(analysis, url, language)
         
         if not pdf_bytes:
+            print("PDF generation failed")
             return "Failed to generate PDF report.", 500
             
         # Create response
