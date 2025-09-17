@@ -17,43 +17,45 @@ def index():
         url = request.form['url']
         language = request.form['language']
         
-        # Store data in session to be used for PDF download
-        session['url'] = url
-        session['language'] = language
-
         try:
-            # 1. Find policy links from the base URL
+            print(f"Finding policy links for: {url}")
             policy_links = find_policy_links(url)
+            print(f"Found policy links: {policy_links}")
             
             if not policy_links:
-                # If no links found, maybe the provided URL is the policy page itself
+                print("No policy links found, using provided URL")
                 policy_links = [url]
                 
-            # 2. Extract text from the first found policy link (or the provided URL)
-            policy_text = get_text_from_url(policy_links[0]) if policy_links else None
-
-            analysis_result = None
-            if policy_text:
-                # 3. Analyze the text using the LLM
-                analysis_result = analyze_policy_text(policy_text, language)
-                
-                # Convert analysis_result to a format that can be stored in session
-                session_analysis = {
-                    'risk_category': analysis_result.get('risk_category', ''),
-                    'translated_summary': analysis_result.get('translated_summary', ''),
-                    'translated_key_risks': analysis_result.get('translated_key_risks', [])
-                }
-                
-                # Store analysis in session
-                session['analysis'] = session_analysis
-                
-                result_data = {
-                    "url": url,
-                    "language": language,
-                    "analysis": analysis_result
-                }
-                
-                return render_template('index.html', result=result_data)
+            print(f"Extracting text from: {policy_links[0]}")
+            policy_text = get_text_from_url(policy_links[0])
+            
+            if not policy_text:
+                return render_template('index.html', 
+                    error="Could not extract policy text from the website. Please make sure the URL is correct.")
+            
+            print(f"Analyzing text of length: {len(policy_text)}")
+            analysis_result = analyze_policy_text(policy_text, language)
+            
+            if 'error' in analysis_result:
+                return render_template('index.html', error=analysis_result['error'])
+            
+            # Convert analysis_result to a format that can be stored in session
+            session_analysis = {
+                'risk_category': analysis_result.get('risk_category', ''),
+                'translated_summary': analysis_result.get('translated_summary', ''),
+                'translated_key_risks': analysis_result.get('translated_key_risks', [])
+            }
+            
+            # Store analysis in session
+            session['analysis'] = session_analysis
+            
+            result_data = {
+                "url": url,
+                "language": language,
+                "analysis": analysis_result
+            }
+            
+            return render_template('index.html', result=result_data)
             
         except Exception as e:
             print(f"Error processing request: {str(e)}")

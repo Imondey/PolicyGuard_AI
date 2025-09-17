@@ -22,6 +22,11 @@ def analyze_policy_text(text, target_language="English"):
     if not model:
         return {"error": "Gemini model not initialized. Check API key."}
 
+    # Truncate text if too long to avoid quota issues
+    max_length = 12000
+    if len(text) > max_length:
+        text = text[:max_length] + "..."
+
     prompt = f"""
     You are an expert legal analyst specializing in online privacy and terms of service.
     Your task is to analyze the following policy text and provide a structured JSON output.
@@ -29,7 +34,7 @@ def analyze_policy_text(text, target_language="English"):
 
     Policy Text:
     ---
-    {text[:15000]}
+    {text}
     ---
 
     Perform the following actions:
@@ -58,10 +63,27 @@ def analyze_policy_text(text, target_language="English"):
     """
 
     try:
-        response = model.generate_content(prompt)
-        # Clean the response to make it valid JSON
+        response = model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": 0.7,
+                "top_p": 0.8,
+                "top_k": 40,
+                "max_output_tokens": 2048,
+            },
+            safety_settings=[
+                {
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                }
+            ]
+        )
         cleaned_response = response.text.strip().replace('```json', '').replace('```', '')
         return json.loads(cleaned_response)
     except Exception as e:
+        if "429" in str(e):  # Rate limit error
+            return {
+                "error": "API rate limit reached. Please try again in a few minutes or contact support to upgrade your API quota."
+            }
         print(f"Error during API call or JSON parsing: {e}")
-        return {"error": f"Failed to get analysis from the model. Details: {str(e)}"}
+        return {"error": f"Analysis failed. Please try again later."}
