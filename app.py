@@ -83,7 +83,12 @@ def text_to_speech():
     
     language_map = {
         'English': 'en',
+        'Hindi': 'hi',
         'Bengali': 'bn',
+        'Tamil': 'ta',
+        'Telugu': 'te',
+        'Malayalam': 'ml',
+        'Urdu': 'ur',
         'French': 'fr',
         'Russian': 'ru',
         'Spanish': 'es',
