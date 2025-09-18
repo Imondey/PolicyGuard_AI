@@ -12,6 +12,17 @@ def create_report(analysis_data, url, language):
         pdf = PDF()
         pdf.add_page()
         
+        # Ensure text is properly encoded
+        def safe_text(text):
+            if isinstance(text, str):
+                return text.encode('latin-1', errors='replace').decode('latin-1')
+            return str(text)
+        
+        # Use safer text handling
+        url = safe_text(url)
+        summary = safe_text(analysis_data.get('translated_summary', 'No summary available.'))
+        risks = [safe_text(risk) for risk in analysis_data.get('translated_key_risks', [])]
+        
         # Try different fonts in order of preference
         fonts = ['Arial', 'Helvetica', 'Courier']
         font_set = False
@@ -46,14 +57,13 @@ def create_report(analysis_data, url, language):
         pdf.set_font(pdf.font_family, 'B', 14)
         pdf.cell(0, 10, f'Summary ({language}):', 0, 1)
         pdf.set_font(pdf.font_family, '', 12)
-        pdf.multi_cell(0, 10, analysis_data.get('translated_summary', 'No summary available.'))
+        pdf.multi_cell(0, 10, summary)
         pdf.ln(10)
         
         # Key Risks Section
         pdf.set_font(pdf.font_family, 'B', 14)
         pdf.cell(0, 10, f'Key Risks ({language}):', 0, 1)
         pdf.set_font(pdf.font_family, '', 12)
-        risks = analysis_data.get('translated_key_risks', [])
         for risk in risks:
             pdf.multi_cell(0, 10, f"• {risk}")
         

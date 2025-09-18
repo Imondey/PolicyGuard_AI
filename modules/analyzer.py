@@ -15,8 +15,16 @@ current_key_index = 0
 
 def get_next_api_key():
     global current_key_index
-    current_key_index = (current_key_index + 1) % len(API_KEYS)
-    return API_KEYS[current_key_index]
+    start_index = current_key_index
+    
+    while True:
+        api_key = API_KEYS[current_key_index]
+        if api_key:  # Check if key is not None or empty
+            return api_key
+            
+        current_key_index = (current_key_index + 1) % len(API_KEYS)
+        if current_key_index == start_index:
+            return None  # All keys are invalid
 
 def analyze_policy_text(text, target_language="English"):
     """

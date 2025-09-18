@@ -5,34 +5,63 @@ from modules.pdf_generator import create_report
 from gtts import gTTS, gTTSError
 from io import BytesIO
 import os
+import logging
+import requests
+from urllib.parse import urlparse, urljoin
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'a_very_secret_key_for_development'
 
+# Add session configuration
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=1800  # 30 minutes
+)
+
+def validate_url(url):
+    """Validate and clean URL"""
+    try:
+        result = urlparse(url)
+        if not result.scheme:
+            url = 'https://' + url
+        response = requests.head(url, allow_redirects=True)
+        return response.url
+    except Exception as e:
+        logger.error(f"URL validation error: {e}")
+        return None
+
 def setup_fonts():
-    """Set up the fonts directory with a default system font"""
-    fonts_dir = os.path.join(os.path.dirname(__file__), 'fonts')
-    os.makedirs(fonts_dir, exist_ok=True)
-    
-    # Use Arial or a system font instead of downloading DejaVu
-    font_path = os.path.join(fonts_dir, "arial.ttf")
-    
-    # If font doesn't exist, create a symlink to system Arial font
-    if not os.path.exists(font_path):
-        try:
-            # Windows path to Arial
-            system_font = "C:\\Windows\\Fonts\\arial.ttf"
+    """Set up the fonts directory with fallback options"""
+    try:
+        fonts_dir = os.path.join(os.path.dirname(__file__), 'fonts')
+        os.makedirs(fonts_dir, exist_ok=True)
+        
+        # List of potential system fonts
+        system_fonts = [
+            "C:\\Windows\\Fonts\\arial.ttf",
+            "C:\\Windows\\Fonts\\calibri.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        
+        for system_font in system_fonts:
             if os.path.exists(system_font):
-                if os.name == 'nt':  # Windows
+                dest_path = os.path.join(fonts_dir, os.path.basename(system_font))
+                if not os.path.exists(dest_path):
                     import shutil
-                    shutil.copy2(system_font, font_path)
-                else:  # Unix-like
-                    os.symlink(system_font, font_path)
-            else:
-                print("Warning: Arial font not found. Text rendering might be affected.")
-        except Exception as e:
-            print(f"Warning: Could not set up font: {e}")
-            print("Continuing without custom font...")
+                    shutil.copy2(system_font, dest_path)
+                return True
+                
+        logger.warning("No system fonts found. Using default font.")
+        return False
+    except Exception as e:
+        logger.error(f"Font setup error: {e}")
+        return False
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -41,82 +70,97 @@ def index():
         language = request.form['language']
         
         try:
-            print(f"Finding policy links for: {url}")
-            policy_links = find_policy_links(url)
-            print(f"Found policy links: {policy_links}")
+            # Validate and clean URL
+            valid_url = validate_url(url)
+            if not valid_url:
+                return render_template('index.html', 
+                    error="Invalid URL. Please enter a valid website address.")
+            
+            logger.info(f"Finding policy links for: {valid_url}")
+            policy_links = find_policy_links(valid_url)
+            logger.info(f"Found policy links: {policy_links}")
             
             if not policy_links:
-                print("No policy links found, using provided URL")
-                policy_links = [url]
+                logger.warning("No policy links found, using provided URL")
+                policy_links = [valid_url]
                 
-            print(f"Extracting text from: {policy_links[0]}")
-            policy_text = get_text_from_url(policy_links[0])
+            policy_text = None
+            for link in policy_links:
+                logger.info(f"Trying to extract text from: {link}")
+                policy_text = get_text_from_url(link)
+                if policy_text:
+                    break
             
             if not policy_text:
                 return render_template('index.html', 
-                    error="Could not extract policy text from the website. Please make sure the URL is correct.")
+                    error="Could not extract policy text. Please check the website or try a different URL.")
             
-            print(f"Analyzing text of length: {len(policy_text)}")
+            logger.info(f"Analyzing text of length: {len(policy_text)}")
             analysis_result = analyze_policy_text(policy_text, language)
             
             if 'error' in analysis_result:
                 return render_template('index.html', error=analysis_result['error'])
             
-            # Store ALL necessary data in session
-            session['url'] = url
-            session['language'] = language
-            session['analysis'] = {
-                'risk_category': analysis_result.get('risk_category', ''),
-                'translated_summary': analysis_result.get('translated_summary', ''),
-                'translated_key_risks': analysis_result.get('translated_key_risks', [])
+            # Store complete analysis data in session
+            session['analysis_data'] = {
+                'url': valid_url,
+                'language': language,
+                'analysis': {
+                    'risk_category': analysis_result.get('risk_category', ''),
+                    'translated_summary': analysis_result.get('translated_summary', ''),
+                    'translated_key_risks': analysis_result.get('translated_key_risks', [])
+                }
             }
             
-            result_data = {
-                "url": url,
-                "language": language,
-                "analysis": analysis_result
-            }
-            
-            return render_template('index.html', result=result_data)
+            return render_template('index.html', result=session['analysis_data'])
             
         except Exception as e:
-            print(f"Error processing request: {str(e)}")
-            return render_template('index.html', error="An error occurred while processing your request. Please try again.")
+            logger.error(f"Error processing request: {str(e)}", exc_info=True)
+            return render_template('index.html', 
+                error="An error occurred while processing your request. Please try again.")
 
     return render_template('index.html', result=None)
 
 @app.route('/download_pdf')
 def download_pdf():
     try:
-        # Get data from session with better error handling
-        url = session.get('url')
-        language = session.get('language')
-        analysis = session.get('analysis')
+        # Get complete analysis data from session
+        analysis_data = session.get('analysis_data')
         
-        if not url or not language or not analysis:
-            print("Missing session data:", {
-                'url': bool(url),
-                'language': bool(language),
-                'analysis': bool(analysis)
+        if not analysis_data:
+            logger.error("No analysis data in session")
+            return "Please analyze a policy first.", 400
+            
+        # Generate PDF with error handling
+        try:
+            pdf_bytes = create_report(
+                analysis_data['analysis'],
+                analysis_data['url'],
+                analysis_data['language']
+            )
+            
+            if not pdf_bytes:
+                logger.error("PDF generation returned None")
+                return "Failed to generate PDF report.", 500
+                
+            # Create response with PDF
+            response = make_response(pdf_bytes)
+            response.headers.update({
+                'Content-Type': 'application/pdf',
+                'Content-Disposition': 'attachment; filename=policy_analysis.pdf',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             })
-            return "No analysis data available. Please analyze a policy first.", 400
             
-        # Generate PDF
-        pdf_bytes = create_report(analysis, url, language)
-        
-        if not pdf_bytes:
-            print("PDF generation failed")
-            return "Failed to generate PDF report.", 500
+            return response
             
-        # Create response
-        response = make_response(pdf_bytes)
-        response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = 'attachment; filename=policy_analysis.pdf'
-        
-        return response
-        
+        except Exception as e:
+            logger.error(f"PDF generation error: {str(e)}", exc_info=True)
+            return "Error generating PDF report.", 500
+            
     except Exception as e:
-        print(f"Error in download_pdf: {str(e)}")
+        logger.error(f"Download PDF error: {str(e)}", exc_info=True)
         return "An error occurred while generating the PDF.", 500
 
 @app.route('/text-to-speech', methods=['POST'])
@@ -170,9 +214,24 @@ def text_to_speech():
         return response
             
     except Exception as e:
-        print(f"TTS Error: {str(e)}")
+        logger.error(f"TTS Error: {str(e)}")
         return {'error': str(e)}, 500
 
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    return response
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('index.html', error="Page not found"), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template('index.html', error="An internal error occurred"), 500
+
 if __name__ == '__main__':
-    setup_fonts()  # Set up fonts before running the app
+    setup_fonts()
     app.run(debug=True)
