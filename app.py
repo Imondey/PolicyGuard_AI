@@ -130,35 +130,35 @@ def download_pdf():
         if not analysis_data:
             logger.error("No analysis data in session")
             return "Please analyze a policy first.", 400
-            
+        
+        logger.info("Generating PDF report...")
+        logger.debug(f"Analysis data: {analysis_data}")
+        
         # Generate PDF with error handling
-        try:
-            pdf_bytes = create_report(
-                analysis_data['analysis'],
-                analysis_data['url'],
-                analysis_data['language']
-            )
-            
-            if not pdf_bytes:
-                logger.error("PDF generation returned None")
-                return "Failed to generate PDF report.", 500
-                
-            # Create response with PDF
-            response = make_response(pdf_bytes)
-            response.headers.update({
-                'Content-Type': 'application/pdf',
-                'Content-Disposition': 'attachment; filename=policy_analysis.pdf',
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-            })
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"PDF generation error: {str(e)}", exc_info=True)
-            return "Error generating PDF report.", 500
-            
+        pdf_bytes = create_report(
+            analysis_data['analysis'],
+            analysis_data['url'],
+            analysis_data['language']
+        )
+        
+        if not pdf_bytes:
+            logger.error("PDF generation returned None")
+            return "Failed to generate PDF report.", 500
+        
+        # Create response with PDF
+        response = make_response(pdf_bytes)
+        response.headers.update({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': 'attachment; filename=policy_analysis.pdf',
+            'Content-Length': len(pdf_bytes),
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        })
+        
+        logger.info("PDF generated successfully")
+        return response
+        
     except Exception as e:
         logger.error(f"Download PDF error: {str(e)}", exc_info=True)
         return "An error occurred while generating the PDF.", 500
